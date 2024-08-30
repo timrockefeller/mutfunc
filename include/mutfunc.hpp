@@ -239,88 +239,51 @@ namespace mutfunc
 
 #pragma endregion rw_context
 
-#pragma region type_erased_storage
-
-    struct basic_storage
-    {
-    };
-
-    template <typename T>
-    struct storage : basic_storage
-    {
-        using StorageType = std::decay_t<T>;
-        StorageType data;
-    };
-
-    struct data_registry
-    {
-        template <typename T>
-        T& get()
-        {
-            std::shared_ptr<basic_storage> original = assure<T>();
-            std::shared_ptr<storage<T>> derived = std::static_pointer_cast<storage<T>>(original);
-            return derived->data;
-        }
-        // template <typename T>
-        // const T &get() const
-        // {
-        //     return std::static_pointer_cast<storage<T>>(assure<T>())->get();
-        // }
-        template <typename T>
-        std::shared_ptr<basic_storage> assure()
-        {
-            using StorageType = std::decay_t<T>;
-            auto type_id = identify_type<StorageType>();
-            if (pool.find(type_id) == pool.end())
-            {
-                pool[type_id] = std::make_shared<storage<StorageType>>();
-            }
-            return pool.at(type_id);
-        }
-        std::unordered_map<type_identifier, std::shared_ptr<basic_storage>> pool;
-    };
-
-#pragma endregion type_erased_storage
 
 #pragma region arg_context
-    struct data_context : data_registry
+    template <typename Impl>
+    struct arg_context
     {
+        template <typename T>
+        T parse()
+        {
+            return impl.parse<T>();
+        }
+
+        Impl impl;
     };
+
 
 #pragma endregion arg_context
 
 #pragma region registry
 
-    template <typename RwImpl>
+    template <typename... Impls>
     struct function_proxy;
 
-    template <typename RwImpl>
+    template <typename... Impls>
     struct schedule
     {
+        using RwImpl = type_at_t<type_list<Impls...>, 0>;
+        using ArgImpl = type_at_t<type_list<Impls...>, 1>;
         /**
          * @param f will be moved into system's scope, don't use it after calling this function.
          */
         template <typename F>
         schedule &add_system(F f)
         {
-            systems.push_back(function_proxy<RwImpl>{f});
+            systems.push_back(function_proxy<Impls...>{f});
             return *this;
         }
-        std::vector<function_proxy<RwImpl>> systems;
-        std::unique_ptr<data_context> data = std::make_unique<data_context>();
+        std::vector<function_proxy<Impls...>> systems;
+        arg_context<ArgImpl> arg;
     };
 
     template <typename T, typename... Impls>
     T parse_arg(schedule<Impls...> &s)
     {
-        return s.data->get<T>();
+        return s.arg.parse<T>();
     }
-
-    // template <typename T, typename... Impls>
-    // const T parse_arg(const schedule<Impls...> &s)
-    // {
-    //     return s.data->get<T>();
-    // }
 
     template <typename... Args, typename... Impls>
     auto gen_arg(type_list<Args...>, schedule<Impls...> &s) -> std::tuple<Args...>
@@ -337,9 +300,10 @@ namespace mutfunc
         return false;
     }
 
-    template <typename RwImpl>
+    template <typename... Impls>
     struct function_proxy
     {
+
         function_proxy() = delete;
 
         template <typename F>
@@ -352,9 +316,9 @@ namespace mutfunc
         template <typename F>
         void init(F f)
         {
-            using rt = typename decltype(parse_func(f))::argument_types;
-            parse_rw<rt>(rw);
-            ft = [f = std::move(f)](schedule<RwImpl> &s)
+            using arg_t = typename decltype(parse_func(f))::argument_types;
+            parse_rw<arg_t>(rw);
+            ft = [f = std::move(f)](schedule<Impls...> &s)
             {
                 // prepare arguments here
                 apply_system(f, s);
@@ -363,10 +327,8 @@ namespace mutfunc
 
         // debug name
         std::string name;
-
-        std::function<void(schedule<RwImpl> &)> ft;
-
-        rw_context<RwImpl> rw;
+        std::function<void(schedule<Impls...> &)> ft;
+        rw_context<typename schedule<Impls...>::RwImpl> rw;
     };
 
 #pragma endregion registry

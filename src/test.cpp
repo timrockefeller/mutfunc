@@ -1,5 +1,5 @@
 #include "mutfunc.hpp"
-
+#include "storage.hpp"
 #include <iostream>
 struct rw_context_impl
 {
@@ -26,6 +26,35 @@ struct rw_context_impl
         }
     }
 };
+
+struct arg_context_impl
+{
+    data_registry data;
+    template <typename T>
+    struct data_provider
+    {
+        static T get(data_registry &data)
+        {
+            return data.get<T>();
+        }
+    };
+
+    template <typename T>
+    struct data_provider<T*>
+    {
+        static T *get(data_registry &data)
+        {
+            return &(data.get<T>());
+        }
+    };
+
+    template <typename T>
+    T parse()
+    {
+        return data_provider<T>::get(data);
+    }
+};
+
 void TestRaw(int &i, float &f)
 {
     std::cout << i << " " << f << std::endl;
@@ -34,7 +63,7 @@ void TestRaw(int &i, float &f)
     f = 1;
     std::cout << i << " " << f << std::endl;
 }
-std::function TestFunc = [](int &i, const float f)
+std::function TestFunc = [](int i, const float f)
 {
     std::cout << i << " " << f << std::endl;
     std::cout << "invoke TestFunc" << std::endl;
@@ -42,13 +71,13 @@ std::function TestFunc = [](int &i, const float f)
     // f = 2;
     std::cout << i << " " << f << std::endl;
 };
-auto TestLambda = [](const int &i, float &f)
+auto TestLambda = [](int *i, const float &f)
 {
-    std::cout << i << " " << f << std::endl;
+    std::cout << *i << " " << f << std::endl;
     std::cout << "invoke TestLambda" << std::endl;
-    // i = 3;
-    f = 3;
-    std::cout << i << " " << f << std::endl;
+    *i = 3;
+    // f = 3;
+    std::cout << *i << " " << f << std::endl;
 };
 struct A_Class
 {
@@ -64,7 +93,7 @@ struct A_Class
 
 void _test_system()
 {
-    mutfunc::schedule<rw_context_impl> schedule;
+    mutfunc::schedule<rw_context_impl, arg_context_impl> schedule;
     schedule
         .add_system(TestRaw)
         .add_system(TestFunc)
@@ -78,21 +107,8 @@ void _test_system()
         std::invoke(system.ft, schedule);
     }
 }
-
-void _test_storage()
-{
-    std::cout << "==============" << std::endl;
-    mutfunc::data_registry registry;
-    registry.get<int>() = 2;
-    std::cout << registry.get<int>() << std::endl;
-}
-
 int main()
 {
-
-    // mutfunc::schedule<rw_context_impl> schedule;
-    // auto f = mutfunc::gen_arg<>(mutfunc::type_list<float &>{}, schedule);
     _test_system();
-    _test_storage();
     return 0;
 }
