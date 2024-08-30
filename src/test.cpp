@@ -26,10 +26,25 @@ struct rw_context_impl
         }
     }
 };
-
-void TestRaw(int8_t, float) {}
-std::function TestFunc = [](int, double) {};
-auto TestLambda = [](const char &, std::size_t &) {};
+void TestRaw(const int8_t&, float)
+{
+    std::cout << "invoke TestRaw" << std::endl;
+}
+std::function TestFunc = [](int, double)
+{
+    std::cout << "invoke TestFunc" << std::endl;
+};
+auto TestLambda = [](const char, std::size_t)
+{
+    std::cout << "invoke TestLambda" << std::endl;
+};
+struct A_Class
+{
+    static inline void TestMemberFunc(const int, const double)
+    {
+        std::cout << "invoke TestMemberFunc" << std::endl;
+    }
+};
 
 void _test()
 {
@@ -37,8 +52,15 @@ void _test()
     schedule
         .add_system(TestRaw)
         .add_system(TestFunc)
-        .add_system(TestLambda);
-    schedule.rw.impl.debug();
+        .add_system(TestLambda)
+        .add_system(A_Class::TestMemberFunc);
+
+    for (auto &&system : schedule.systems)
+    {
+        std::cout << system.name << std::endl;
+        system.rw.impl.debug();
+        std::invoke(system.ft, schedule);
+    }
 }
 
 int main()

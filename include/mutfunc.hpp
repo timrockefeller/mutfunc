@@ -1,13 +1,14 @@
 #pragma once
 #include <functional>
 #include <type_traits>
+#include <string>
 namespace mutfunc
 {
 
 #pragma region type_list
 
     // type list
-    template <typename...Ts>
+    template <typename... Ts>
     struct type_list;
 
     template <>
@@ -162,7 +163,7 @@ namespace mutfunc
 #endif
 
 #ifndef USE_RTTI
-#define USE_RTTI 0
+#define USE_RTTI 1
 #endif
 
     using type_identifier = const char *;
@@ -236,24 +237,84 @@ namespace mutfunc
 
 #pragma endregion rw_context
 
+#pragma region type_erased_storage
+
+
+
+#pragma endregion type_erased_storage
+
+#pragma region data_context
+    template <typename Impl>
+    struct data_context
+    {
+        Impl impl;
+    };
+
+#pragma endregion data_context
+
 #pragma region registry
 
-    template <typename F>
-    struct function_proxy
-    {
-        function_proxy(F f) {}
-    };
+    template <typename RwImpl>
+    struct function_proxy;
 
     template <typename RwImpl>
     struct schedule
     {
+        /**
+         * @param f will be moved into system's scope, don't use it after calling this function.
+         */
         template <typename F>
         schedule &add_system(F f)
         {
-            using rt = typename decltype(parse_func(f))::argument_types;
-            parse_rw<rt>(rw);
+            systems.push_back(function_proxy<RwImpl>{f});
             return *this;
         }
+        std::vector<function_proxy<RwImpl>> systems;
+    };
+
+    template <typename... Args, typename... Impls>
+    auto gen_arg(type_list<Args...>, schedule<Impls...> &s)
+    {
+        return std::tuple<Args...>{};
+    }
+
+    template <typename F, typename... Impls>
+    bool apply_system(F f, schedule<Impls...> &s)
+    {
+        using rt = typename decltype(parse_func(f))::argument_types;
+        auto args = gen_arg(rt{}, s);
+        std::apply(f, args);
+        return false;
+    }
+
+    template <typename RwImpl>
+    struct function_proxy
+    {
+        function_proxy() = delete;
+
+        template <typename F>
+        function_proxy(F f)
+        {
+            name = __PRETTY_FUNCTION__;
+            init(std::forward<F>(f));
+        }
+
+        template <typename F>
+        void init(F f)
+        {
+            using rt = typename decltype(parse_func(f))::argument_types;
+            parse_rw<rt>(rw);
+            ft = [f = std::move(f)](schedule<RwImpl> &s)
+            {
+                // prepare arguments here
+                apply_system(f, s);
+            };
+        }
+
+        // debug name
+        std::string name;
+
+        std::function<void(schedule<RwImpl> &)> ft;
 
         rw_context<RwImpl> rw;
     };
