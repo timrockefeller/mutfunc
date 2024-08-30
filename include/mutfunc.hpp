@@ -2,6 +2,8 @@
 #include <functional>
 #include <type_traits>
 #include <string>
+#include <memory>
+#include <any>
 namespace mutfunc
 {
 
@@ -239,18 +241,53 @@ namespace mutfunc
 
 #pragma region type_erased_storage
 
+    struct basic_storage
+    {
+    };
 
+    template <typename T>
+    struct storage : basic_storage
+    {
+        using StorageType = std::decay_t<T>;
+        StorageType data;
+    };
+
+    struct data_registry
+    {
+        template <typename T>
+        T& get()
+        {
+            std::shared_ptr<basic_storage> original = assure<T>();
+            std::shared_ptr<storage<T>> derived = std::static_pointer_cast<storage<T>>(original);
+            return derived->data;
+        }
+        // template <typename T>
+        // const T &get() const
+        // {
+        //     return std::static_pointer_cast<storage<T>>(assure<T>())->get();
+        // }
+        template <typename T>
+        std::shared_ptr<basic_storage> assure()
+        {
+            using StorageType = std::decay_t<T>;
+            auto type_id = identify_type<StorageType>();
+            if (pool.find(type_id) == pool.end())
+            {
+                pool[type_id] = std::make_shared<storage<StorageType>>();
+            }
+            return pool.at(type_id);
+        }
+        std::unordered_map<type_identifier, std::shared_ptr<basic_storage>> pool;
+    };
 
 #pragma endregion type_erased_storage
 
-#pragma region data_context
-    template <typename Impl>
-    struct data_context
+#pragma region arg_context
+    struct data_context : data_registry
     {
-        Impl impl;
     };
 
-#pragma endregion data_context
+#pragma endregion arg_context
 
 #pragma region registry
 
@@ -270,12 +307,25 @@ namespace mutfunc
             return *this;
         }
         std::vector<function_proxy<RwImpl>> systems;
+        std::unique_ptr<data_context> data = std::make_unique<data_context>();
     };
 
-    template <typename... Args, typename... Impls>
-    auto gen_arg(type_list<Args...>, schedule<Impls...> &s)
+    template <typename T, typename... Impls>
+    T parse_arg(schedule<Impls...> &s)
     {
-        return std::tuple<Args...>{};
+        return s.data->get<T>();
+    }
+
+    // template <typename T, typename... Impls>
+    // const T parse_arg(const schedule<Impls...> &s)
+    // {
+    //     return s.data->get<T>();
+    // }
+
+    template <typename... Args, typename... Impls>
+    auto gen_arg(type_list<Args...>, schedule<Impls...> &s) -> std::tuple<Args...>
+    {
+        return std::forward_as_tuple(parse_arg<Args>(s)...);
     }
 
     template <typename F, typename... Impls>

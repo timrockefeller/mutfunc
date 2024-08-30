@@ -26,27 +26,43 @@ struct rw_context_impl
         }
     }
 };
-void TestRaw(const int8_t&, float)
+void TestRaw(int &i, float &f)
 {
+    std::cout << i << " " << f << std::endl;
     std::cout << "invoke TestRaw" << std::endl;
+    i = 1;
+    f = 1;
+    std::cout << i << " " << f << std::endl;
 }
-std::function TestFunc = [](int, double)
+std::function TestFunc = [](int &i, const float f)
 {
+    std::cout << i << " " << f << std::endl;
     std::cout << "invoke TestFunc" << std::endl;
+    i = 2;
+    // f = 2;
+    std::cout << i << " " << f << std::endl;
 };
-auto TestLambda = [](const char, std::size_t)
+auto TestLambda = [](const int &i, float &f)
 {
+    std::cout << i << " " << f << std::endl;
     std::cout << "invoke TestLambda" << std::endl;
+    // i = 3;
+    f = 3;
+    std::cout << i << " " << f << std::endl;
 };
 struct A_Class
 {
-    static inline void TestMemberFunc(const int, const double)
+    static inline void TestMemberFunc(int &i, float f)
     {
+        std::cout << i << " " << f << std::endl;
+        i = 4;
+        f = 4;
         std::cout << "invoke TestMemberFunc" << std::endl;
+        std::cout << i << " " << f << std::endl;
     }
 };
 
-void _test()
+void _test_system()
 {
     mutfunc::schedule<rw_context_impl> schedule;
     schedule
@@ -63,8 +79,20 @@ void _test()
     }
 }
 
+void _test_storage()
+{
+    std::cout << "==============" << std::endl;
+    mutfunc::data_registry registry;
+    registry.get<int>() = 2;
+    std::cout << registry.get<int>() << std::endl;
+}
+
 int main()
 {
-    _test();
+
+    // mutfunc::schedule<rw_context_impl> schedule;
+    // auto f = mutfunc::gen_arg<>(mutfunc::type_list<float &>{}, schedule);
+    _test_system();
+    _test_storage();
     return 0;
 }
